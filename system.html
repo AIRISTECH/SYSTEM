@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestão de Pagamentos</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Inter',sans-serif;background:#f0f7f2;color:#1a1a1a;}
+.container{max-width:1100px;margin:30px auto;padding:20px;}
+h1,h2{color:#2a7a32;font-weight:600;margin-bottom:20px;}
+.controls{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;align-items:center;}
+input, select, textarea{padding:10px;border-radius:8px;border:1px solid #c5e1c5;font-size:14px;width:100%;box-sizing:border-box;}
+textarea{min-height:60px;resize:vertical;}
+button{background:#2a7a32;color:white;padding:10px 16px;border:none;border-radius:8px;cursor:pointer;font-weight:500;}
+button.secondary{background:#888;}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:15px;}
+.parcel-card{background:white;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.05);padding:15px;display:flex;flex-direction:column;transition:transform 0.2s;}
+.parcel-card:hover{transform:translateY(-3px);}
+.parcel-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-weight:600;color:#2a7a32;}
+.parcel-row{display:flex;justify-content:space-between;margin-bottom:4px;font-size:14px;}
+.parcel-actions{display:flex;gap:8px;margin-top:10px;}
+.parcel-actions button{flex:1;font-size:13px;}
+.footer{margin-top:30px;font-size:13px;color:#555;}
+.file-input{display:none;}
+#loginScreen{display:flex;justify-content:center;align-items:center;height:100vh;background:#f0f7f2;}
+#loginBox{background:white;padding:30px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);max-width:400px;width:100%;}
+#loginBox h2{margin-bottom:20px;text-align:center;color:#2a7a32;}
+#loginBox input{margin-bottom:15px;}
+@media(max-width:600px){.grid{grid-template-columns:1fr;}}
+#importModal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);justify-content:center;align-items:center;z-index:10;}
+#importContent{background:white;padding:20px;border-radius:12px;max-width:500px;width:90%;max-height:80%;overflow:auto;}
+#importContent h3{margin-top:0;color:#2a7a32;}
+#importContent .modal-row{display:flex;justify-content:space-between;margin:4px 0;border-bottom:1px solid #eee;padding:3px 0;}
+#importContent button{margin-top:15px;}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+</head>
+<body>
+
+<div id="loginScreen">
+  <div id="loginBox">
+    <h2>Login</h2>
+    <input id="username" type="text" placeholder="Usuário">
+    <input id="password" type="password" placeholder="Senha">
+    <button onclick="login()">Entrar</button>
+  </div>
+</div>
+
+<div id="appScreen" class="container" style="display:none;">
+  <h1>Gestão de Pagamentos</h1>
+  <div class="controls">
+    <input id="searchInput" placeholder="Pesquisar por sócio, CPF ou parcela" style="flex:1; min-width:200px;">
+    <select id="filterQuitada" style="min-width:120px;">
+      <option value="">Todos</option>
+      <option value="1">Quitadas</option>
+      <option value="0">Em aberto</option>
+    </select>
+    <button onclick="applyFilters()">Aplicar</button>
+    <button onclick="exportCSV()">Exportar CSV</button>
+    <button onclick="exportXLSX()">Exportar XLSX</button>
+    <button onclick="document.getElementById('fileInput').click()" class="secondary">Importar</button>
+    <input type="file" id="fileInput" class="file-input" accept=".csv,.xlsx">
+    <button onclick="clearAll()" class="secondary">Limpar Tudo</button>
+  </div>
+
+  <section style="margin-bottom:25px;">
+    <h2>Cadastro / Edição de Parcela</h2>
+    <div class="grid">
+      <div><label>Nº Parcela</label><input id="n_parcela" type="text"></div>
+      <div><label>Vencimento</label><input id="vencimento" type="date"></div>
+      <div><label>Valor</label><input id="valor" type="number" step="0.01"></div>
+      <div><label>Nome do Sócio</label><input id="nome_socio" type="text"></div>
+      <div><label>CPF do Sócio</label><input id="cpf_socio" type="text"></div>
+      <div><label>Título do Sócio</label><input id="titulo_socio" type="text"></div>
+      <div><label>Forma de Pagamento</label>
+        <select id="forma_pagamento"><option value="">Selecione</option><option>Pix</option><option>Boleto</option><option>Dinheiro</option><option>Cartão</option></select>
+      </div>
+      <div><label>Pago pelo titular?</label>
+        <select id="pago_por_titular"><option value="1">Sim</option><option value="0">Não (3º)</option></select>
+      </div>
+      <div><label>Nome do Pagante</label><input id="nome_pagante" type="text"></div>
+      <div style="grid-column:1/4;"><label>Observações</label><textarea id="observacoes"></textarea></div>
+      <div style="display:flex;gap:12px;align-items:center;"><label><input type="checkbox" id="quitada"> Quitada</label><label>Data do Pagamento: <input type="date" id="data_pagamento"></label></div>
+      <div style="grid-column:1/4;display:flex;gap:12px;"><button onclick="saveParcela()">Salvar Parcela</button><button class="secondary" onclick="resetForm()">Limpar Formulário</button></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Parcelas</h2>
+    <div id="tableWrap" class="grid"></div>
+  </section>
+  <div class="footer">Os dados são salvos no navegador. Para usar em outro PC, exporte ou importe arquivos.</div>
+</div>
+
+<div id="importModal">
+  <div id="importContent">
+    <h3>Confirme os dados importados</h3>
+    <div id="importList"></div>
+    <button onclick="confirmImport()">Confirmar Importação</button>
+    <button class="secondary" onclick="cancelImport()">Cancelar</button>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY='parcelas_app_modern';
+let parcelas=[], editingId=null, importPending=[];
+
+function login(){
+  const u=document.getElementById('username').value.trim();
+  const p=document.getElementById('password').value;
+  if(u==='SOLUÇÃO' && p==='SOL2025'){document.getElementById('loginScreen').style.display='none';document.getElementById('appScreen').style.display='block';load();}
+  else alert('Usuário ou senha incorretos!');
+}
+
+function load(){ try{ parcelas=JSON.parse(localStorage.getItem(STORAGE_KEY))||[]; }catch(e){ parcelas=[]; } renderTable(); }
+function saveToStorage(){ localStorage.setItem(STORAGE_KEY,JSON.stringify(parcelas)); }
+function uid(){ return Date.now()+Math.floor(Math.random()*999); }
+
+function saveParcela(){
+  const p={n_parcela:document.getElementById('n_parcela').value.trim(),
+           vencimento:document.getElementById('vencimento').value,
+           valor:parseFloat(document.getElementById('valor').value)||0,
+           nome_socio:document.getElementById('nome_socio').value.trim(),
+           cpf_socio:document.getElementById('cpf_socio').value.trim(),
+           titulo_socio:document.getElementById('titulo_socio').value.trim(),
+           forma_pagamento:document.getElementById('forma_pagamento').value,
+           pago_por_titular:document.getElementById('pago_por_titular').value==='1'?1:0,
+           nome_pagante:document.getElementById('nome_pagante').value.trim(),
+           observacoes:document.getElementById('observacoes').value.trim(),
+           quitada:document.getElementById('quitada').checked?1:0,
+           data_pagamento:document.getElementById('data_pagamento').value || (document.getElementById('quitada').checked?new Date().toISOString().slice(0,10):'')};
+  if(!p.n_parcela||!p.nome_socio){alert('Preencha Nº Parcela e Nome do Sócio');return;}
+  if(editingId){ p.id=editingId; parcelas=parcelas.map(x=>x.id===editingId?p:x); editingId=null; }
+  else { const dup=parcelas.find(x=>x.n_parcela===p.n_parcela && x.cpf_socio===p.cpf_socio); if(dup){if(!confirm('Parcela já existe. Substituir?')) return; p.id=dup.id; parcelas=parcelas.map(x=>x.id===dup.id?p:x);} else {p.id=uid(); parcelas.push(p);} }
+  saveToStorage(); resetForm(); renderTable(); alert('Parcela salva!');
+}
+
+function editParcela(id){ const p=parcelas.find(x=>x.id===id); if(!p) return; editingId=id; ['n_parcela','vencimento','valor','nome_socio','cpf_socio','titulo_socio','forma_pagamento','pago_por_titular','nome_pagante','observacoes','data_pagamento'].forEach(f=>document.getElementById(f).value=p[f]||''); document.getElementById('quitada').checked=p.quitada?true:false; window.scrollTo({top:0,behavior:'smooth'}); }
+function removeParcela(id){ if(!confirm('Remover parcela?'))return; parcelas=parcelas.filter(x=>x.id!==id); saveToStorage(); renderTable(); }
+function resetForm(){ editingId=null; ['n_parcela','vencimento','valor','nome_socio','cpf_socio','titulo_socio','forma_pagamento','pago_por_titular','nome_pagante','observacoes','data_pagamento'].forEach(f=>document.getElementById(f).value=''); document.getElementById('quitada').checked=false; }
+
+function renderTable(){
+  const search=document.getElementById('searchInput').value.toLowerCase();
+  const q=document.getElementById('filterQuitada').value;
+  let rows=parcelas.slice();
+  if(search) rows=rows.filter(r=>(r.nome_socio||'').toLowerCase().includes(search)||(r.cpf_socio||'').toLowerCase().includes(search)||(r.n_parcela||'').toLowerCase().includes(search));
+  if(q==='1') rows=rows.filter(r=>r.quitada===1); if(q==='0') rows=rows.filter(r=>r.quitada!==1);
+  rows.sort((a,b)=>(a.vencimento||'').localeCompare(b.vencimento||''));
+  const wrap=document.getElementById('tableWrap'); wrap.innerHTML='';
+  if(rows.length===0){ wrap.innerHTML='<p>Nenhuma parcela</p>'; return; }
+  rows.forEach(r=>{
+    const div=document.createElement('div'); div.className='parcel-card';
+    div.innerHTML=`<div class="parcel-header">${r.n_parcela} - <span style="font-weight:500;color:#2a7a32;">${r.nome_socio}</span> (${r.quitada?'Quitada':'Aberta'})</div>
+      <div class="parcel-row"><span>Vencimento:</span><span>${r.vencimento||'-'}</span></div>
+      <div class="parcel-row"><span>Valor:</span><span>${r.valor.toFixed(2)}</span></div>
+      <div class="parcel-row"><span>CPF:</span><span>${r.cpf_socio||'-'}</span></div>
+      <div class="parcel-row"><span>Título:</span><span>${r.titulo_socio||'-'}</span></div>
+      <div class="parcel-row"><span>Pagamento:</span><span>${r.forma_pagamento||'-'}</span></div>
+      <div class="parcel-row"><span>Pago por titular:</span><span>${r.pago_por_titular?'Sim':'Não'}</span></div>
+      <div class="parcel-row"><span>Nome Pagante:</span><span>${r.nome_pagante||'-'}</span></div>
+      <div class="parcel-row"><span>Data Pagamento:</span><span>${r.data_pagamento||'-'}</span></div>
+      <div class="parcel-row"><span>Observações:</span><span>${r.observacoes||'-'}</span></div>
+      <div class="parcel-actions"><button onclick="editParcela(${r.id})">Editar</button><button class="secondary" onclick="removeParcela(${r.id})">Excluir</button></div>`;
+    wrap.appendChild(div);
+  });
+}
+
+function applyFilters(){ renderTable(); }
+function exportCSV(){
+  if(parcelas.length===0){ alert('Sem dados'); return; }
+  const header=["Nº Parcela","Vencimento","Quitada","Data Pagamento","Nome do Sócio","CPF","Título","Valor","Forma","Pago por Titular","Nome Pagante","Observações","ID"];
+  const rows=parcelas.map(p=>[p.n_parcela||'',p.vencimento||'',p.quitada?'Sim':'Não',p.data_pagamento||'',p.nome_socio||'',p.cpf_socio||'',p.titulo_socio||'',p.valor.toFixed(2),p.forma_pagamento||'',p.pago_por_titular?'Sim':'Não',p.nome_pagante||'',p.observacoes||'',p.id]);
+  const csv=[header.join(',')].concat(rows.map(r=>r.map(c=>`"${c.toString().replace(/"/g,'""')}"`).join(','))).join('\n');
+  saveAs(new Blob([csv],{type:'text/csv;charset=utf-8'}),'parcelas.csv');
+}
+
+function exportXLSX(){
+  if(parcelas.length===0){ alert('Sem dados'); return; }
+  const ws_data=parcelas.map(p=>({ "Nº Parcela":p.n_parcela||'', "Vencimento":p.vencimento||'', "Quitada":p.quitada?'Sim':'Não', "Data Pagamento":p.data_pagamento||'', "Nome do Sócio":p.nome_socio||'', "CPF":p.cpf_socio||'', "Título":p.titulo_socio||'', "Valor":p.valor||0, "Forma":p.forma_pagamento||'', "Pago por titular":p.pago_por_titular?'Sim':'Não', "Nome Pagante":p.nome_pagante||'', "Observações":p.observacoes||'', "ID":p.id }));
+  const ws=XLSX.utils.json_to_sheet(ws_data); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Parcelas');
+  const wbout=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+  saveAs(new Blob([wbout],{type:'application/octet-stream'}),'parcelas.xlsx');
+}
+
+function clearAll(){ if(confirm('Remover todos os dados?')){ parcelas=[]; saveToStorage(); renderTable(); } }
+
+document.getElementById('fileInput').addEventListener('change', e=>{
+  const file=e.target.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=function(evt){
+    let data=evt.target.result, imported=[];
+    if(file.name.endsWith('.csv')){
+      const lines=data.split(/\r?\n/).slice(1).filter(l=>l.trim());
+      imported=lines.map(l=>{
+        const vals=l.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v=>v.replace(/^"|"$/g,'').replace(/""/g,'"'));
+        return {id:vals[12]?Number(vals[12]):uid(), n_parcela:vals[0], vencimento:vals[1], quitada:vals[2]==='Sim'?1:0, data_pagamento:vals[3], nome_socio:vals[4], cpf_socio:vals[5], titulo_socio:vals[6], valor:parseFloat(vals[7]||0), forma_pagamento:vals[8], pago_por_titular:vals[9]==='Sim'?1:0, nome_pagante:vals[10], observacoes:vals[11]};
+      });
+    } else if(file.name.endsWith('.xlsx')){
+      const wb=XLSX.read(evt.target.result,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      imported=XLSX.utils.sheet_to_json(ws).map(p=>({
+        id:p.ID?Number(p.ID):uid(),
+        n_parcela:p['Nº Parcela']||'',
+        vencimento:p['Vencimento']||'',
+        quitada:p.Quitada==='Sim'?1:0,
+        data_pagamento:p['Data Pagamento']||'',
+        nome_socio:p['Nome do Sócio']||'',
+        cpf_socio:p['CPF']||'',
+        titulo_socio:p['Título']||'',
+        valor:Number(p['Valor'])||0,
+        forma_pagamento:p['Forma']||'',
+        pago_por_titular:p['Pago por titular']==='Sim'?1:0,
+        nome_pagante:p['Nome Pagante']||'',
+        observacoes:p['Observações']||''
+      }));
+    }
+    importPending=imported; showImportModal();
+  };
+  if(file.name.endsWith('.xlsx')) reader.readAsArrayBuffer(file); else reader.readAsText(file);
+  e.target.value='';
+});
+
+function showImportModal(){
+  const list=document.getElementById('importList'); list.innerHTML='';
+  importPending.forEach(p=>{
+    const div=document.createElement('div'); div.className='modal-row';
+    div.innerHTML=`<span>${p.n_parcela} - ${p.nome_socio}</span><span>${p.quitada?'Quitada':'Aberta'}</span>`;
+    list.appendChild(div);
+  });
+  document.getElementById('importModal').style.display='flex';
+}
+
+function confirmImport(){
+  importPending.forEach(imp=>{
+    let idx=parcelas.findIndex(p=>p.id===imp.id);
+    if(idx<0) idx=parcelas.findIndex(p=>p.n_parcela===imp.n_parcela && p.cpf_socio===imp.cpf_socio);
+    if(idx>=0) parcelas[idx]=imp; else parcelas.push(imp);
+  });
+  saveToStorage(); renderTable(); importPending=[]; document.getElementById('importModal').style.display='none';
+  alert('Importação concluída!');
+}
+
+function cancelImport(){ importPending=[]; document.getElementById('importModal').style.display='none'; }
+
+document.getElementById('searchInput').addEventListener('input',()=>renderTable());
+document.getElementById('filterQuitada').addEventListener('change',()=>renderTable());
+</script>
+</body>
+</html>
